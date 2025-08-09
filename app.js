@@ -1,5 +1,5 @@
 // ✅ 後端 API 網域（請改成你的 Render 網址，例如：https://chat-whisper-api.onrender.com）
-const API_BASE = 'https://<你的-Render-網域>';
+const API_BASE = 'https://fourleaf.onrender.com';
 const api = (p) => `${API_BASE}${p}`;
 
 // 說明：前端聊天邏輯（純原生 JS）
@@ -220,3 +220,4 @@ messages.push({
   ts: Date.now()
 });
 render();
+
