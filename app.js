@@ -1,12 +1,19 @@
-// ✅ 後端 API 網域（請改成你的 Render 網址，例如：https://chat-whisper-api.onrender.com）
+// ✅ 後端 API 網域
 const API_BASE = 'https://fourleaf.onrender.com';
 const api = (p) => `${API_BASE}${p}`;
 
-// 說明：前端聊天邏輯（純原生 JS）
-// - 使用 MediaRecorder 錄音，將音檔以 form-data 送到 /api/whisper
-// - Whisper 回傳文字後：顯示在輸入框並自動送到 /api/n8n
-// - 顯示 n8n 回覆，並可逐則播放語音（OpenAI TTS 經由 /api/tts）
-// - 全中文註解
+/* =========================
+   免登入多使用者：clientId
+   - 每個瀏覽器第一次載入就產生一個 clientId
+   - 之後所有請求都帶上，用於在 n8n 分流/記錄對話
+   ========================= */
+const CID_KEY = 'fourleaf_client_id';
+let clientId = localStorage.getItem(CID_KEY);
+if (!clientId) {
+  clientId = (crypto.randomUUID && crypto.randomUUID())
+    || (Date.now() + '-' + Math.random().toString(36).slice(2));
+  localStorage.setItem(CID_KEY, clientId);
+}
 
 // ---- DOM 參照 ----
 const elMessages = document.getElementById('messages');
@@ -54,7 +61,7 @@ function render() {
     btnPlay.className = 'link';
     btnPlay.innerText = '播放';
     btnPlay.title = '播放此則語音';
-    btnPlay.addEventListener('click', () => speak(m.text)); // 呼叫下方的 OpenAI TTS 版本
+    btnPlay.addEventListener('click', () => speak(m.text));
     actions.appendChild(btnPlay);
 
     bubble.appendChild(actions);
@@ -79,14 +86,26 @@ async function sendText(text) {
   render();
 
   try {
-    // 呼叫後端 /api/n8n，將文字轉發給 n8n webhook（⚠️ 改成打 Render）
+    // 呼叫後端 /api/n8n，將文字與 clientId 轉發給 n8n webhook
     const res = await fetch(api('/api/n8n'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: content })
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': clientId // 自訂 header（後端與 n8n 都可讀）
+      },
+      body: JSON.stringify({ text: content, clientId }) // 同時放在 body
     });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+
+    // 優化錯誤顯示：先取字串，再嘗試 JSON 解析
+    const raw = await res.text();
+    let data;
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { errorRaw: raw }; }
+
+    if (!res.ok) {
+      throw new Error(
+        `HTTP ${res.status} ${res.statusText} — ${data.error || data.body || data.errorRaw || raw || 'unknown error'}`
+      );
+    }
 
     // 解析 n8n 回覆
     const replyText =
@@ -119,9 +138,7 @@ async function sendText(text) {
    ========================= */
 async function speak(text, opts = {}) {
   const { voice = 'alloy', format = 'mp3' } = opts; // 想換聲線/格式在此調整
-
   try {
-    // 從後端取得音檔 Blob（⚠️ 改成打 Render）
     const res = await fetch(api('/api/tts'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -129,53 +146,71 @@ async function speak(text, opts = {}) {
     });
     if (!res.ok) throw new Error(await res.text());
 
-    // 建立音訊並播放
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
 
-    // iOS/部分瀏覽器需要使用者互動（點擊）後才能播放；若失敗可提示用戶
     await audio.play().catch(() => {
       alert('瀏覽器阻擋自動播放，請先點擊頁面或再按一次播放。');
     });
-
-    // 播放完釋放記憶體
     audio.addEventListener('ended', () => URL.revokeObjectURL(url));
   } catch (err) {
     alert('TTS 播放失敗：' + (err?.message || err));
   }
 }
 
-// ---- 錄音（MediaRecorder）→ Whisper（/api/whisper）----
+/* =========================
+   錄音（MediaRecorder）→ Whisper（/api/whisper）
+   - 自動挑可用的 MIME，增加跨瀏覽器相容
+   ========================= */
 let mediaRecorder = null;
 let recordedChunks = [];
+
+function pickAudioMime() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg'
+  ];
+  const chosen = candidates.find(t => 'MediaRecorder' in window && MediaRecorder.isTypeSupported(t)) || '';
+  // 回傳容器（去掉 codecs）
+  const container = chosen.includes('ogg') ? 'audio/ogg' : 'audio/webm';
+  return { chosen, container };
+}
 
 async function startRecording() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+    const { chosen, container } = pickAudioMime();
+    mediaRecorder = new MediaRecorder(stream, chosen ? { mimeType: chosen } : undefined);
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) recordedChunks.push(e.data);
     };
 
     mediaRecorder.onstop = async () => {
-      // 錄音結束：組合 Blob
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+      // 錄音結束：組合 Blob（使用容器 MIME，避免不支援格式）
+      const blob = new Blob(recordedChunks, { type: container });
+      const filename = container === 'audio/ogg' ? 'audio.ogg' : 'audio.webm';
 
       // 用 form-data 上傳（欄位名必須叫 file，後端才接得到）
       const fd = new FormData();
-      fd.append('file', blob, 'audio.webm');
+      fd.append('file', blob, filename);
 
       try {
-        // 呼叫 /api/whisper 取得文字（⚠️ 改成打 Render）
         const res = await fetch(api('/api/whisper'), { method: 'POST', body: fd });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        const text = data?.text || '';
+        const raw = await res.text();
+        let data;
+        try { data = raw ? JSON.parse(raw) : {}; } catch { data = { errorRaw: raw }; }
 
-        // 將辨識文字放到輸入框並自動送出
+        if (!res.ok) {
+          throw new Error(data.error || data.errorRaw || raw || `HTTP ${res.status}`);
+        }
+
+        const text = data?.text || '';
         elInput.value = text;
         await sendText(text);
       } catch (err) {
@@ -212,12 +247,11 @@ elBtnMic.addEventListener('click', () => {
   else startRecording();
 });
 
-// ---- 初始化：放一則歡迎訊息 ----
+// ---- 初始化：放一則歡迎訊息（尾碼顯示 clientId 末 6 碼方便辨識會話）----
 messages.push({
   id: uid(),
   role: 'assistant',
-  text: '您好！請用語音或文字提問，我會幫您查詢資料庫。',
+  text: `您好！這是您的對話會話（#${clientId.slice(-6)}）。請用語音或文字提問，我會幫您查詢資料庫。`,
   ts: Date.now()
 });
 render();
-
