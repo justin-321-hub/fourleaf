@@ -33,7 +33,7 @@ function render() {
     // 頭像
     const avatar = document.createElement('img');
     avatar.className = 'avatar';
-    avatar.src = isUser ? './assets/user-avatar.png' : './assets/bot-avatar.png';
+    avatar.src = isUser ? 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/user-avatar.png' : 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/bot-avatar.png';
     avatar.alt = isUser ? 'you' : 'bot';
 
     // 泡泡
@@ -214,3 +214,4 @@ messages.push({
   ts: Date.now()
 });
 render();
+
