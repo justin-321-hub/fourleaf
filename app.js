@@ -1,3 +1,7 @@
+// ✅ 後端 API 網域（請改成你的 Render 網址，例如：https://chat-whisper-api.onrender.com）
+const API_BASE = 'https://<你的-Render-網域>';
+const api = (p) => `${API_BASE}${p}`;
+
 // 說明：前端聊天邏輯（純原生 JS）
 // - 使用 MediaRecorder 錄音，將音檔以 form-data 送到 /api/whisper
 // - Whisper 回傳文字後：顯示在輸入框並自動送到 /api/n8n
@@ -33,7 +37,9 @@ function render() {
     // 頭像
     const avatar = document.createElement('img');
     avatar.className = 'avatar';
-    avatar.src = isUser ? 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/user-avatar.png' : 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/bot-avatar.png';
+    avatar.src = isUser
+      ? 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/user-avatar.png'
+      : 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/bot-avatar.png';
     avatar.alt = isUser ? 'you' : 'bot';
 
     // 泡泡
@@ -48,7 +54,7 @@ function render() {
     btnPlay.className = 'link';
     btnPlay.innerText = '播放';
     btnPlay.title = '播放此則語音';
-    btnPlay.addEventListener('click', () => speak(m.text)); // ← 呼叫下方的 OpenAI TTS 版本
+    btnPlay.addEventListener('click', () => speak(m.text)); // 呼叫下方的 OpenAI TTS 版本
     actions.appendChild(btnPlay);
 
     bubble.appendChild(actions);
@@ -73,8 +79,8 @@ async function sendText(text) {
   render();
 
   try {
-    // 呼叫後端 /api/n8n，將文字轉發給 n8n webhook
-    const res = await fetch('/api/n8n', {
+    // 呼叫後端 /api/n8n，將文字轉發給 n8n webhook（⚠️ 改成打 Render）
+    const res = await fetch(api('/api/n8n'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: content })
@@ -82,7 +88,7 @@ async function sendText(text) {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
 
-    // 解析 n8n 回覆：優先使用 data.text，其次 data.message，最後整個 JSON
+    // 解析 n8n 回覆
     const replyText =
       typeof data === 'string'
         ? data
@@ -115,8 +121,8 @@ async function speak(text, opts = {}) {
   const { voice = 'alloy', format = 'mp3' } = opts; // 想換聲線/格式在此調整
 
   try {
-    // 從後端取得音檔 Blob
-    const res = await fetch('/api/tts', {
+    // 從後端取得音檔 Blob（⚠️ 改成打 Render）
+    const res = await fetch(api('/api/tts'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice, format })
@@ -129,7 +135,7 @@ async function speak(text, opts = {}) {
     const audio = new Audio(url);
 
     // iOS/部分瀏覽器需要使用者互動（點擊）後才能播放；若失敗可提示用戶
-    audio.play().catch(() => {
+    await audio.play().catch(() => {
       alert('瀏覽器阻擋自動播放，請先點擊頁面或再按一次播放。');
     });
 
@@ -163,8 +169,8 @@ async function startRecording() {
       fd.append('file', blob, 'audio.webm');
 
       try {
-        // 呼叫 /api/whisper 取得文字
-        const res = await fetch('/api/whisper', { method: 'POST', body: fd });
+        // 呼叫 /api/whisper 取得文字（⚠️ 改成打 Render）
+        const res = await fetch(api('/api/whisper'), { method: 'POST', body: fd });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         const text = data?.text || '';
@@ -214,4 +220,3 @@ messages.push({
   ts: Date.now()
 });
 render();
-
