@@ -135,10 +135,19 @@ body {
 @keyframes shimmer { 0% {background-position: 100% 0;} 100% {background-position: -100% 0;} }
 
 /* 輸入列 */
+/* ✅ 讓輸入列可隨 textarea 長高，不再固定 72px */
 .composer {
-  height: 72px; background: var(--panel); border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: 8px; padding: 0 12px; justify-content: center;
+  min-height: 72px;
+  height: auto;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;     /* 多行時從上緣對齊 */
+  gap: 8px;
+  padding: 8px 12px;          /* 上下加 padding，比較不擁擠 */
+  justify-content: center;
 }
+
 .composer .input {
   width: 100%; max-width: 620px;
   min-height: 40px;            /* 初始高度 */
@@ -167,4 +176,5 @@ body {
   .bubble { max-width: 86%; padding-right: 40px; }
   .messages { padding: 12px; }
 }
+
 
