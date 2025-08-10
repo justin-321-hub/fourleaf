@@ -140,9 +140,19 @@ body {
   display: flex; align-items: center; gap: 8px; padding: 0 12px; justify-content: center;
 }
 .composer .input {
-  width: 100%; max-width: 620px; height: 40px;
-  border: 1px solid var(--border); border-radius: 12px; padding: 0 12px;
+  width: 100%; max-width: 620px;
+  min-height: 40px;            /* 初始高度 */
+  max-height: 120px;           /* 最高長度 ≈ 3–4 行，可自行調整 */
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.4;
+  border: 1px solid var(--border);
+  border-radius: 12px;
   outline: none;
+  overflow-y: auto;            /* 超過就顯示直向卷軸 */
+  resize: none;                /* 禁止手動拖拉，靠自動長高 */
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .btn {
   height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer;
@@ -157,3 +167,4 @@ body {
   .bubble { max-width: 86%; padding-right: 40px; }
   .messages { padding: 12px; }
 }
+
