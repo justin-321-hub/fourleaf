@@ -30,7 +30,10 @@
     <!-- 輸入列 -->
     <footer class="composer">
       <button id="btnMic" class="btn btn-outline" aria-label="開始語音輸入">🎤 語音</button>
-      <input id="txtInput" class="input" placeholder="輸入訊息，或點選語音…" />
+      <textarea id="txtInput" class="input"
+          rows="1"
+          placeholder="輸入訊息（Shift+Enter 換行，Enter 送出）"
+          enterkeyhint="send" autocomplete="off" autocapitalize="off" autocorrect="off"></textarea>
       <button id="btnSend" class="btn btn-primary">送出</button>
     </footer>
 
@@ -48,3 +51,4 @@
     <script src="./app.js"></script>
   </body>
 </html>
+
