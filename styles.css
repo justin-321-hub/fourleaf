@@ -21,6 +21,9 @@ body {
   display: flex; flex-direction: column;
 }
 
+/* 公用 */
+.hidden { display: none !important; }
+
 /* 頂部列 */
 .topbar {
   position: sticky; top: 0;
@@ -33,7 +36,8 @@ body {
 
 /* 主體與訊息清單 */
 .main {
-  flex: 1; display: flex; justify-content: center;
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; /* 讓「思考中」區塊可在 messages 下方置中 */
   padding: 12px;
 }
 .messages {
@@ -45,33 +49,4 @@ body {
 .msg { display: flex; align-items: flex-start; gap: 10px; }
 .msg.user { flex-direction: row-reverse; }
 .avatar {
-  width: 36px; height: 36px; border-radius: 999px; background: #fff; border: 1px solid var(--border);
-}
-.bubble {
-  max-width: 78%;
-  border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px;
-  background: var(--bubble-bot); color: var(--bubble-bot-text);
-  box-shadow: 0 1px 3px rgba(0,0,0,.05);
-  font-size: 14px; line-height: 1.5;
-}
-.user .bubble { background: var(--bubble-user); color: var(--bubble-user-text); border-color: transparent; }
-.actions { margin-top: 6px; display: flex; gap: 8px; font-size: 12px; opacity: .8; }
-.actions .link { cursor: pointer; text-decoration: underline; }
-
-/* 輸入列 */
-.composer {
-  height: 72px; background: var(--panel); border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: 8px; padding: 0 12px; justify-content: center;
-}
-.composer .input {
-  width: 100%; max-width: 620px; height: 40px;
-  border: 1px solid var(--border); border-radius: 12px; padding: 0 12px;
-  outline: none;
-}
-.btn {
-  height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid transparent; cursor: pointer;
-}
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-600); }
-.btn-outline { background: #f3f4f6; border-color: var(--border); }
-.btn-outline:hover { background: #e9ecf1; }
+  width: 36px; height: 36px; border-radius
