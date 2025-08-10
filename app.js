@@ -4,8 +4,6 @@ const api = (p) => `${API_BASE}${p}`;
 
 /* =========================
    免登入多使用者：clientId
-   - 每個瀏覽器第一次載入就產生一個 clientId
-   - 之後所有請求都帶上，用於在 n8n 分流/記錄對話
    ========================= */
 const CID_KEY = 'fourleaf_client_id';
 let clientId = localStorage.getItem(CID_KEY);
@@ -20,22 +18,133 @@ const elMessages = document.getElementById('messages');
 const elInput = document.getElementById('txtInput');
 const elBtnSend = document.getElementById('btnSend');
 const elBtnMic = document.getElementById('btnMic');
+const elThinking = document.getElementById('thinking'); // ★ 思考動畫
 
 // ---- 訊息狀態 ----
 /** @type {{id:string, role:'user'|'assistant', text:string, ts:number}[]} */
 const messages = [];
+// 每次 render 後，記住各訊息對應的播放按鈕（自動播放用）
+const audioBtnMap = new Map();
 
-// ---- 工具：產生簡單唯一 ID ----
+// ---- 工具 ----
 const uid = () => Math.random().toString(36).slice(2);
-
-// ---- 工具：自動捲到最底 ----
 function scrollToBottom() {
   elMessages.scrollTo({ top: elMessages.scrollHeight, behavior: 'smooth' });
 }
 
-// ---- 顯示訊息到畫面 ----
+// ★ 思考動畫 on/off + 禁用輸入
+function setThinking(on) {
+  if (!elThinking) return;
+  if (on) {
+    elThinking.classList.remove('hidden');
+    elBtnSend.disabled = true;
+    elBtnMic.disabled = true;
+    elInput.disabled = true;
+  } else {
+    elThinking.classList.add('hidden');
+    elBtnSend.disabled = false;
+    elBtnMic.disabled = false;
+    elInput.disabled = false;
+  }
+}
+
+/* =========================
+   單一音訊播放管理器 + TTS 快取
+   ========================= */
+const AudioManager = (() => {
+  let currentAudio = null;
+  let currentBtn = null;
+  let currentURL = null; // objectURL
+  const ttsCache = new Map(); // cacheKey -> Blob
+  const CACHE_LIMIT = 20;
+
+  function setBtnState(btn, state) {
+    if (!btn) return;
+    btn.dataset.state = state; // idle | playing
+  }
+  function evictIfNeeded() {
+    if (ttsCache.size > CACHE_LIMIT) {
+      const firstKey = ttsCache.keys().next().value;
+      ttsCache.delete(firstKey);
+    }
+  }
+  function stop() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    if (currentURL) {
+      URL.revokeObjectURL(currentURL);
+      currentURL = null;
+    }
+    setBtnState(currentBtn, 'idle');
+    currentBtn = null;
+  }
+
+  async function getTTSBlob(cacheKey, text, opts = {}) {
+    if (cacheKey && ttsCache.has(cacheKey)) return ttsCache.get(cacheKey);
+    const { voice = 'alloy', format = 'mp3' } = opts;
+    const res = await fetch(api('/api/tts'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice, format })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    if (cacheKey) {
+      ttsCache.set(cacheKey, blob);
+      evictIfNeeded();
+    }
+    return blob;
+  }
+
+  async function playFromText(cacheKey, text, opts, btn) {
+    // 若點擊的是「同一顆正在播放的按鈕」，則視為「暫停/停止」
+    if (btn && currentBtn === btn && btn.dataset.state === 'playing') {
+      stop();
+      return;
+    }
+
+    // 播放新的音訊前，先停掉舊的
+    stop();
+
+    // 取得/產生 TTS
+    const blob = await getTTSBlob(cacheKey, text, opts);
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+
+    currentAudio = audio;
+    currentBtn = btn || null;
+    currentURL = url;
+
+    audio.addEventListener('ended', () => {
+      stop();
+    });
+    audio.addEventListener('pause', () => {
+      // 若因為使用者或瀏覽器造成 pause，也回復按鈕狀態
+      setBtnState(currentBtn, 'idle');
+    });
+
+    try {
+      await audio.play();
+      setBtnState(currentBtn, 'playing');
+    } catch (err) {
+      // 自動播放被阻擋
+      setBtnState(currentBtn, 'idle');
+      alert('瀏覽器阻擋自動播放，請先點擊頁面或再按一次播放。');
+    }
+  }
+
+  return { playFromText, stop };
+})();
+
+/* =========================
+   將訊息渲染到畫面（含語音按鈕）
+   ========================= */
 function render() {
   elMessages.innerHTML = '';
+  audioBtnMap.clear();
+
   for (const m of messages) {
     const isUser = m.role === 'user';
     const row = document.createElement('div');
@@ -54,27 +163,45 @@ function render() {
     bubble.className = 'bubble';
     bubble.innerText = m.text;
 
-    // 每則訊息的動作：播放（OpenAI TTS）
+    // 動作列（含語音播放按鈕）
     const actions = document.createElement('div');
     actions.className = 'actions';
-    const btnPlay = document.createElement('span');
-    btnPlay.className = 'link';
-    btnPlay.innerText = '播放';
-    btnPlay.title = '播放此則語音';
-    btnPlay.addEventListener('click', () => speak(m.text));
-    actions.appendChild(btnPlay);
 
+    const btnPlay = document.createElement('button');
+    btnPlay.className = 'audio-btn';
+    btnPlay.type = 'button';
+    btnPlay.setAttribute('aria-label', '播放/暫停語音');
+    btnPlay.dataset.state = 'idle';
+    btnPlay.innerHTML = `
+      <svg class="icon play" viewBox="0 0 24 24" aria-hidden="true">
+        <use href="#icon-play"></use>
+      </svg>
+      <svg class="icon pause" viewBox="0 0 24 24" aria-hidden="true">
+        <use href="#icon-pause"></use>
+      </svg>
+    `;
+    btnPlay.addEventListener('click', () => {
+      AudioManager.playFromText(m.id, m.text, { voice: 'alloy', format: 'mp3' }, btnPlay);
+    });
+
+    actions.appendChild(btnPlay);
     bubble.appendChild(actions);
 
     // 組合
     row.appendChild(avatar);
     row.appendChild(bubble);
     elMessages.appendChild(row);
+
+    // 記錄此訊息的按鈕（方便之後自動播放）
+    audioBtnMap.set(m.id, btnPlay);
   }
+
   scrollToBottom();
 }
 
-// ---- 將文字送到 n8n，並顯示雙方訊息 ----
+/* =========================
+   將文字送到 n8n，並顯示雙方訊息
+   ========================= */
 async function sendText(text) {
   const content = (text ?? elInput.value).trim();
   if (!content) return;
@@ -85,18 +212,20 @@ async function sendText(text) {
   elInput.value = '';
   render();
 
+  // 思考中（直到收到 n8n 回覆才關閉）
+  setThinking(true);
+
   try {
-    // 呼叫後端 /api/n8n，將文字與 clientId 轉發給 n8n webhook
+    // 呼叫後端 /api/n8n
     const res = await fetch(api('/api/n8n'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Client-Id': clientId // 自訂 header（後端與 n8n 都可讀）
+        'X-Client-Id': clientId
       },
-      body: JSON.stringify({ text: content, clientId }) // 同時放在 body
+      body: JSON.stringify({ text: content, clientId })
     });
 
-    // 優化錯誤顯示：先取字串，再嘗試 JSON 解析
     const raw = await res.text();
     let data;
     try { data = raw ? JSON.parse(raw) : {}; } catch { data = { errorRaw: raw }; }
@@ -107,7 +236,6 @@ async function sendText(text) {
       );
     }
 
-    // 解析 n8n 回覆
     const replyText =
       typeof data === 'string'
         ? data
@@ -115,11 +243,18 @@ async function sendText(text) {
 
     const botMsg = { id: uid(), role: 'assistant', text: replyText, ts: Date.now() };
     messages.push(botMsg);
+
+    // 關閉思考中 → 再渲染
+    setThinking(false);
     render();
 
-    // 自動語音播放機器人回覆（OpenAI TTS）
-    speak(replyText);
+    // 自動語音播放這則回覆（單一音訊管理會自動停止舊的）
+    const btn = audioBtnMap.get(botMsg.id);
+    if (btn) {
+      AudioManager.playFromText(botMsg.id, replyText, { voice: 'alloy', format: 'mp3' }, btn);
+    }
   } catch (err) {
+    setThinking(false);
     const botErr = {
       id: uid(),
       role: 'assistant',
@@ -132,36 +267,13 @@ async function sendText(text) {
 }
 
 /* =========================
-   文字轉語音（OpenAI TTS）
-   經由後端 /api/tts 產生音檔再播放
-   可用 voice: alloy/nova/onyx/sage/shimmer/…，format: mp3/wav/opus/aac/flac/pcm
+   （更新版）文字轉語音：走 AudioManager
    ========================= */
-async function speak(text, opts = {}) {
-  const { voice = 'alloy', format = 'mp3' } = opts; // 想換聲線/格式在此調整
-  try {
-    const res = await fetch(api('/api/tts'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice, format })
-    });
-    if (!res.ok) throw new Error(await res.text());
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-
-    await audio.play().catch(() => {
-      alert('瀏覽器阻擋自動播放，請先點擊頁面或再按一次播放。');
-    });
-    audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-  } catch (err) {
-    alert('TTS 播放失敗：' + (err?.message || err));
-  }
-}
+// 若你還想在其他地方手動播放，可用：
+// AudioManager.playFromText(cacheKey, text, { voice: 'alloy', format: 'mp3' }, 按鈕或null);
 
 /* =========================
    錄音（MediaRecorder）→ Whisper（/api/whisper）
-   - 自動挑可用的 MIME，增加跨瀏覽器相容
    ========================= */
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -174,7 +286,6 @@ function pickAudioMime() {
     'audio/ogg'
   ];
   const chosen = candidates.find(t => 'MediaRecorder' in window && MediaRecorder.isTypeSupported(t)) || '';
-  // 回傳容器（去掉 codecs）
   const container = chosen.includes('ogg') ? 'audio/ogg' : 'audio/webm';
   return { chosen, container };
 }
@@ -192,11 +303,9 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = async () => {
-      // 錄音結束：組合 Blob（使用容器 MIME，避免不支援格式）
       const blob = new Blob(recordedChunks, { type: container });
       const filename = container === 'audio/ogg' ? 'audio.ogg' : 'audio.webm';
 
-      // 用 form-data 上傳（欄位名必須叫 file，後端才接得到）
       const fd = new FormData();
       fd.append('file', blob, filename);
 
@@ -216,7 +325,6 @@ async function startRecording() {
       } catch (err) {
         alert('語音辨識失敗：' + (err?.message || err));
       } finally {
-        // 釋放麥克風
         stream.getTracks().forEach(t => t.stop());
       }
     };
@@ -247,7 +355,7 @@ elBtnMic.addEventListener('click', () => {
   else startRecording();
 });
 
-// ---- 初始化：放一則歡迎訊息（尾碼顯示 clientId 末 6 碼方便辨識會話）----
+// ---- 初始化歡迎訊息 ----
 messages.push({
   id: uid(),
   role: 'assistant',
