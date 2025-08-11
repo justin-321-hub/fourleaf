@@ -154,8 +154,8 @@ function render() {
     const avatar = document.createElement('img');
     avatar.className = 'avatar';
     avatar.src = isUser
-      ? 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/user-avatar.png'
-      : 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/bot-avatar.png';
+      ? 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/user-avatar1.png'
+      : 'https://raw.githubusercontent.com/justin-321-hub/fourleaf/refs/heads/main/assets/bot-avatar1.png';
     avatar.alt = isUser ? 'you' : 'bot';
 
     // 泡泡
@@ -363,4 +363,5 @@ messages.push({
   ts: Date.now()
 });
 render();
+
 
