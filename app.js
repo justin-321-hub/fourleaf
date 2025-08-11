@@ -216,8 +216,8 @@ async function sendText(text) {
   setThinking(true);
 
   try {
-    // 呼叫後端 /api/n8n
-    const res = await fetch(api('/api/n8n'), {
+    // 呼叫後端 /api/chat
+    const res = await fetch(api('/api/chat'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -363,3 +363,4 @@ messages.push({
   ts: Date.now()
 });
 render();
+
