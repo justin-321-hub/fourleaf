@@ -359,9 +359,11 @@ elBtnMic.addEventListener('click', () => {
 messages.push({
   id: uid(),
   role: 'assistant',
-  text: `您好！這是您的對話會話（#${clientId.slice(-6)}）。請用語音或文字提問，我會幫您查詢資料庫。`,
+  text: `您好，歡迎光臨！
+這裡是餐飲業專屬客服中心，我們將為您提供餐廳資訊、菜單介紹、訂位服務、交通指南與優惠活動等內容，協助您享受最美好的用餐體驗。請問今天想了解哪方面的資訊呢？`,
   ts: Date.now()
 });
 render();
+
 
 
